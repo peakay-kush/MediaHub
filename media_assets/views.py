@@ -12,7 +12,7 @@ def dashboard_view(request):
     # capture all assets 
     media_list = MediaAsset.objects.filter(is_public=True)
     # power search functionality for my user 
-    query = request.GET.get('q')
+    query = request.GET.get('q') # get data from a form using the name attribute 
     if query:
         media_list = media_list.filter(
             Q(title__icontains=query) | Q(description__icontains=query)
@@ -71,14 +71,50 @@ def media_detail_view(request,pk):
     media.views_count += 1
     media.save(update_fields=['views_count'])
     
-    return render(request, 'media_assets/media_detail.html' , {'media' : media})
+    # compute permissions for template (template can't call methods with args)
+    can_edit = media.can_edit(request.user)
+    can_delete = media.can_delete(request.user)
+
+    return render(request, 'media_assets/media_detail.html' , {
+        'media' : media,
+        'can_edit': can_edit,
+        'can_delete': can_delete,
+    })
 
 ### edit and delete views 
 @login_required
 def edit_media_view(request,pk):
-    pass
+    '''edit media assets based off pk'''
+    media = get_object_or_404(MediaAsset, pk=pk)
+    if not media.can_edit(request.user):
+        messages.error(request, "You cannot edit this file.")
+        return redirect('media_assets:dashboard')
+    if request.method  == "POST":
+        form = MediaAssetForm(request.POST, request.FILES, instance=media)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Media Asset Updated Successfully")
+            return redirect("media_assets:media_detail", pk=pk)
+    else:
+        form = MediaAssetForm(instance=media)
+        
+    return render(request, 'media_assets/edit_media.html', {'form' : form, 'media' : media})
+        
 
 
 @login_required
 def delete_media_view(request,pk):
-    pass
+    '''Delete media assets based of pk'''
+    media = get_object_or_404(MediaAsset,pk=pk)
+    if not media.can_delete(request.user):
+        messages.error(request, "You cannot delete this media")
+        return redirect("media_assets:dashboard")
+    
+    if request.method == "POST":
+        media.delete()
+        messages.success(request,"Deleted Successfully")
+        return redirect("media_assets:my_media")
+    
+    return render(request, 'media_assets/delete_media.html', {
+        'media': media
+    })
